@@ -13,7 +13,7 @@ Welcome to the *Option Pricer*, a Python library for all your cryptocurrency opt
 ## Getting Started 🏁
 
 1. Clone this repository:
-git clone https://github.com/yourusername/options-pricing.git
+git clone https://github.com/sorcel94/options-pricing.git
 
 2. Set up a virtual environment and activate it:
 python -m venv venv
