@@ -1,14 +1,17 @@
 from .option_pricer import OptionPricer
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 
 class MarketPricer(OptionPricer):
+    instruments_cache = {}  
+
     def __init__(self, input_string, base_url="https://www.deribit.com/api/v2/"):
         super().__init__()
         self.base_url = base_url
         self.input_string = input_string
         self.parse_option_string(input_string)
-    
+        self.update_instruments_cache(input_string)
+
     def fetch_options_instruments(self):
         url = f"{self.base_url}public/get_book_summary_by_currency?currency={self.option_underlying}&kind=option"
         response = requests.get(url)
@@ -17,19 +20,39 @@ class MarketPricer(OptionPricer):
             raise requests.exceptions.RequestException(f"Failed to fetch option data from Deribit API: {response.text}")
 
         book_data = response.json()
-        return book_data
-    
-    def fetch_option_book(self):
-        
-        
+        instrument_names = [entry["instrument_name"] for entry in book_data["result"]]
+        return instrument_names
 
+    @classmethod
+    def update_instruments_cache(cls, input_string, force_update=False):
+        option_underlying = input_string.split("-")[0].upper()
+
+        if option_underlying not in cls.instruments_cache:
+            cls.instruments_cache[option_underlying] = {"timestamp": None, "instruments": []}
+
+        cache_entry = cls.instruments_cache[option_underlying]
+
+        if force_update or cache_entry["timestamp"] is None or datetime.now() - cache_entry["timestamp"] > timedelta(days=1):
+            instance = cls(input_string)  # Create an instance with the user's input string to fetch instruments
+            cache_entry["instruments"] = instance.fetch_options_instruments()
+            cache_entry["timestamp"] = datetime.now()
+
+    def fetch_option_book(self):
+        pass
+    
     def get_weighted_price(self, quantity):
-        asset, date_str, strike, option_type = self.parse_option_string(self.input_string)
-        option_data = self.fetch_option_data(self.input_string)
-        
-        
-        
-        return 
+        # Check if the option is available in the instruments cache
+        if self.input_string not in self.instruments_cache["instruments"]:
+            raise ValueError("Requested option is not available.")
+
+        # Fetch the option book for the given option
+        option_book = self.fetch_option_book()
+
+        # Compute the weighted price based on the quantity
+        # implement the logic for calculating the weighted price based on the option book data and the given quantity
+        # ...
+
+        return weighted_price
     
     def get_market_price(self, quantity):
         asset, date_str, strike, option_type = self.parse_option_string(self.input_string)
