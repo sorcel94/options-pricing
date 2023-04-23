@@ -38,7 +38,22 @@ class MarketPricer(OptionPricer):
             cache_entry["timestamp"] = datetime.now()
 
     def fetch_option_book(self):
-        pass
+        # Check if the option is in the cached instruments
+        option_name = self.input_string
+        if option_name in self.instruments_cache[self.option_underlying]["instruments"]:
+            # If the option is available, call the get_order_book endpoint
+            url = f"{self.base_url}public/get_order_book?depth=10&instrument_name={option_name}"
+            response = requests.get(url)
+
+            if response.status_code != 200:
+                raise requests.exceptions.RequestException(f"Failed to fetch option book data from Deribit API: {response.text}")
+
+            order_book_data = response.json()
+            return order_book_data
+        else:
+            # If the option is not available, handle interpolation (to be implemented later)
+            raise NotImplementedError("Interpolation for unavailable options has not been implemented yet.")
+
     
     def get_weighted_price(self, quantity):
         # Check if the option is available in the instruments cache
