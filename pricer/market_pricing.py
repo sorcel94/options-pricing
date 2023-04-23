@@ -1,22 +1,44 @@
 from .option_pricer import OptionPricer
 import requests
+from datetime import datetime
 
 class MarketPricer(OptionPricer):
-    def __init__(self, base_url="https://www.deribit.com/api/v2/"):
+    def __init__(self, input_string, base_url="https://www.deribit.com/api/v2/"):
         super().__init__()
         self.base_url = base_url
-
-    def fetch_option_data(self, option_symbol):
-        url = f"{self.base_url}public/get_book_summary_by_currency?currency={option_symbol}&kind=option"
+        self.input_string = input_string
+        self.parse_option_string(input_string)
+    
+    def fetch_options_instruments(self):
+        url = f"{self.base_url}public/get_book_summary_by_currency?currency={self.option_underlying}&kind=option"
         response = requests.get(url)
 
         if response.status_code != 200:
-            raise Exception(f"Failed to fetch option data from Deribit API: {response.text}")
+            raise requests.exceptions.RequestException(f"Failed to fetch option data from Deribit API: {response.text}")
 
-        option_data = response.json()
-        return option_data
+        book_data = response.json()
+        return book_data
+    
+    def fetch_option_book(self):
+        
+        
 
-    def interpolate(self, target_strike, option_data):
+    def get_weighted_price(self, quantity):
+        asset, date_str, strike, option_type = self.parse_option_string(self.input_string)
+        option_data = self.fetch_option_data(self.input_string)
+        
+        
+        
+        return 
+    
+    def get_market_price(self, quantity):
+        asset, date_str, strike, option_type = self.parse_option_string(self.input_string)
+
+        option_data = self.fetch_option_data(self.input_string)
+        market_price = self.interpolate(strike, option_data, quantity)
+        return market_price
+
+    def interpolate(self, target_strike, option_data, quantity):
     # Implement interpolation logic
     # This might involve finding the two closest available strikes in the option_data
     # and computing a weighted average based on their prices and strikes.
@@ -40,6 +62,11 @@ class MarketPricer(OptionPricer):
 
         lower_weight = (upper_data['strike'] - target_strike) / (upper_data['strike'] - lower_data['strike'])
         upper_weight = 1 - lower_weight
+        
+        # Calculate the weighted average price considering the quantity
+        available_quantity = min(lower_data['amount'], upper_data['amount'])
+        if quantity > available_quantity:
+            raise ValueError(f"Requested quantity {quantity} exceeds available quantity {available_quantity}.")
 
         interpolated_price = lower_weight * lower_data['price'] + upper_weight * upper_data['price']
 
