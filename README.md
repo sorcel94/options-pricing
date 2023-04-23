@@ -39,7 +39,7 @@ option_string = "BTC-25MAR22-20000-C"
 price = pricer.compute_price(option_string)
 
 print(f"The computed option price is: {price:.2f}")
-
+```
 # Contributing 🤝
 
 Contributors are welcomed! If you'd like to improve the code, add new features, or simply fix a typo, feel free to submit a pull request. Let's make this library the best it can be, together!
