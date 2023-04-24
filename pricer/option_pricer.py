@@ -26,7 +26,7 @@ class OptionPricer(ABC):
         # Validate input parameters to ensure they meet the required conditions
         if self.strike <= 0:
             raise ValueError("Strike price must be positive.")
-        if self.time_to_expiry <= 0:
+        if self.time_to_expiry < 0:
             raise ValueError("Time to expiry must be positive.")
         if self.option_type not in ['call', 'put']:
             raise ValueError("Option type must be either 'call' or 'put'.")
