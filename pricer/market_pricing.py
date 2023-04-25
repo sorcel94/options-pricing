@@ -1,9 +1,9 @@
-from option_pricer import OptionPricer
-from utils import fetch_spot_price
-from constants import COIN_GECKO_IDS
+from .option_pricer import OptionPricer
+from .utils import fetch_spot_price
+from .constants import COIN_GECKO_IDS
 import requests
 from datetime import datetime, timedelta
-from option_interpolation import OptionInterpolator
+from .option_interpolation import OptionInterpolator
 
 class MarketPricer(OptionPricer):   
     instruments_cache = {}
@@ -29,7 +29,7 @@ class MarketPricer(OptionPricer):
         # Update the cache if necessary (forced update or stale data)
         if force_update or cache_entry["timestamp"] is None or datetime.now() - cache_entry["timestamp"] > timedelta(days=1):
             # Create an instance of the class with a quantity of 1 and update_cache set to False to avoid recursion
-            instance = cls(input_string, 1, update_cache=False)
+            instance = cls()
             cache_entry["instruments"] = instance._fetch_options_instruments()
             cache_entry["timestamp"] = datetime.now()
 
