@@ -5,17 +5,12 @@ import requests
 from datetime import datetime, timedelta
 from option_interpolation import OptionInterpolator
 
-class MarketPricer(OptionPricer):
+class MarketPricer(OptionPricer):   
     instruments_cache = {}
 
-    def __init__(self, input_string, quantity, update_cache=True, verbose=False):
+    def __init__(self):
         super().__init__()
-        self.input_string = input_string
         self.base_url = "https://www.deribit.com/api/v2/"
-        self.parse_option_string(input_string, quantity)
-        if update_cache:
-            self.update_instruments_cache(input_string)
-        self.verbose = verbose
     
     def __str__(self):
         return f"MarketPricer(input_string='{self.input_string}', quantity={self.quantity})"
@@ -56,8 +51,13 @@ class MarketPricer(OptionPricer):
         instrument_names = [entry["instrument_name"] for entry in book_data["result"]]
         return instrument_names
 
-    def _fetch_option_book(self):
-        url = f"{self.base_url}public/get_order_book?depth=1000&instrument_name={self.input_string}"
+    def _fetch_option_book(self, input_string=None):
+        if input_string:
+            instrument_name = input_string
+        else:
+            instrument_name = self.input_string
+            
+        url = f"{self.base_url}public/get_order_book?depth=1000&instrument_name={instrument_name}"
         response = requests.get(url)
 
         # Handle non-successful API response
@@ -104,13 +104,16 @@ class MarketPricer(OptionPricer):
 
             return total_price / target_quantity
 
-    def _handle_missing_prices(self, bid_weighted_price, ask_weighted_price, bid_spread, ask_spread):
+    def _handle_missing_prices(self, bid_weighted_price, ask_weighted_price, bid_spread=0.05, ask_spread=0.05, fallback_method=None):
         if bid_weighted_price is None and ask_weighted_price is not None:
             bid_weighted_price = ask_weighted_price * (1 - bid_spread)
         elif ask_weighted_price is None and bid_weighted_price is not None:
             ask_weighted_price = bid_weighted_price * (1 + ask_spread)
         elif bid_weighted_price is None and ask_weighted_price is None:
-            raise NotImplementedError("Bid and ask prices missing, interpolation or other methods not implemented yet.")
+            if fallback_method is not None:
+                return fallback_method()
+            else:
+                raise NotImplementedError("Bid and ask prices missing, interpolation or other methods not implemented yet.")
 
         return bid_weighted_price, ask_weighted_price
 
@@ -129,7 +132,7 @@ class MarketPricer(OptionPricer):
 
         return [bid_weighted_price, ask_weighted_price]
     
-    def _validate_inputs(self, future_spot, interpolation_method, bid_spread, ask_spread):
+    def _validate_inputs(self, option_data, future_spot, interpolation_method, bid_spread, ask_spread):
         if future_spot not in ['future', 'spot']:
             raise ValueError("Invalid value for future_spot. Valid values: 'future', 'spot'")
             
@@ -141,13 +144,57 @@ class MarketPricer(OptionPricer):
 
         if not isinstance(ask_spread, float) or ask_spread <= 0:
             raise ValueError("Invalid value for ask_spread. Must be a positive float value.")
+        
+        if not isinstance(option_data, list):
+            raise ValueError("Invalid value for option_data. Must be a list of tuples (option_string, quantity).")
 
-    def compute_price(self, future_spot='future', interpolation_method='linear', bid_spread=0.05, ask_spread=0.05):
+        for option in option_data:
+            if not isinstance(option, tuple):
+                raise ValueError("Invalid value for option_data. Each element must be a tuple (option_string, quantity).")
+
+    def _process_option(self, option_tuple, future_spot, interpolation_method, bid_spread, ask_spread, update_cache, verbose):
+        input_string, quantity = option_tuple
+        self.parse_option_string(input_string, quantity)
+        if update_cache:
+            self.update_instruments_cache(input_string)
+
+        option_name = self.input_string
+        if option_name in self.instruments_cache[self.option_underlying]["instruments"]:
+            if verbose:
+                print(f"Fetching order book for {option_name}...")
+            order_book = self._fetch_option_book()
+        else:
+            if verbose:
+                print(f"Option {option_name} not available. Using interpolation method: {interpolation_method}...")
+
+            instrument_data = option_name.split('-')
+            target_strike = float(instrument_data[2])
+            target_expiry = instrument_data[1]
+            target_quantity = self.quantity
+
+            interpolator = OptionInterpolator(self.instruments_cache[self.option_underlying]['instruments'], self)
+            interpolated_price = interpolator.interpolate_option_price(target_strike, target_expiry, target_quantity, method=interpolation_method)
+            return interpolated_price
+
+        if verbose:
+            print("Using spot price..." if future_spot == 'spot' else "Using future price...")
+        price = self._get_weighted_price(order_book, use_future_price=(future_spot == 'future'), bid_spread=bid_spread, ask_spread=ask_spread)
+        return price
+    
+    def compute_price(self, option_data, future_spot='future', interpolation_method='linear', bid_spread=0.05, ask_spread=0.05, update_cache=True, verbose=True):
         """
         Compute the option price using weighted prices from the order book or interpolation.
 
         Parameters
         ----------
+        option_data : list of tpl [(input_opt , quantity)]
+            the list of options to be priced, the sintax of the input_option is ASSET-DDMMMYY-STRIKE-K
+            where:  ASSET -> crypto ticker eg. BTC,ETH
+                    DDMMMYY -> string date eg. 20SEP23
+                    STRIKE -> strike price wanted eg. 200 (it can be a float 200.1)
+                    K -> option type, eg. C (call) or P (put)
+            Valid value: eg. BTC-20SEP23-30000-C
+            
         future_spot : str, optional, default: 'future'
             Whether to use the future price ('future') or spot price ('spot') for the underlying asset.
             Valid values: 'future', 'spot'
@@ -174,37 +221,13 @@ class MarketPricer(OptionPricer):
         NotImplementedError
             If method is not implemented yet.
         """
-        # Validate function inputs
-        self._validate_inputs(future_spot, interpolation_method, bid_spread, ask_spread)
+        self._validate_inputs(option_data, future_spot, interpolation_method, bid_spread, ask_spread)
     
-        # Get the order book or interpolate
-        option_name = self.input_string
-        if option_name in self.instruments_cache[self.option_underlying]["instruments"]:
-            if self.verbose:
-                print(f"Fetching order book for {option_name}...")
-            order_book = self._fetch_option_book()        
-        else:
-            if self.verbose:
-                print(f"Option {option_name} not available. Using interpolation method: {interpolation_method}...")
-                
-            instrument_data = option_name.split('-')
-            target_strike = float(instrument_data[2])
-            target_expiry = instrument_data[1]
-            interpolator = OptionInterpolator(self.instruments_cache[self.option_underlying]['instruments'])
-            interpolated_price = interpolator.interpolate_option_price(target_strike, target_expiry, method='linear')
-            return interpolated_price
-            
-        if future_spot == 'spot':
-            if self.verbose:
-                print("Using spot price...")
-            price = self._get_weighted_price(order_book, use_future_price=False)
-            
-        else:
-            if self.verbose:
-                print("Using future price...")
-            price = self._get_weighted_price(order_book)
+        price_dic = {}
+        for option_tuple in option_data:
+            price_dic[option_tuple[0]] = self._process_option(option_tuple, future_spot, interpolation_method, bid_spread, ask_spread, update_cache, verbose)
 
-        return price
+        return price_dic
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
+import re
 
 class OptionPricer(ABC):
     def __init__(self):
@@ -38,18 +39,23 @@ class OptionPricer(ABC):
             raise ValueError("Quantity must be positive.")
     
     def parse_option_string(self, option_string, quantity=1, interest_rate=None):
-        # Parse the option string and initialize the common parameters
-        asset, date_str, strike_str, option_kind = option_string.split("-")
-        strike = float(strike_str)
-        asset = asset.upper()
-        expiration_date = datetime.strptime(date_str, "%d%b%y")
-        time_to_expiry = (expiration_date - datetime.now()).days
-        option_type = "call" if option_kind == "C" else "put"
+        pattern = r'([A-Za-z]+)-(\d{2}[A-Za-z]{3}\d{2})-(\d+\.?\d*)-([CP])'
+        match = re.match(pattern, option_string)
         
-        self.initialize_parameters(strike=strike, time_to_expiry=time_to_expiry,
-                                option_type=option_type, underlying=asset, quantity=quantity, interest_rate=interest_rate)
+        if match:
+            asset, date_str, strike_str, option_kind = match.groups()
+            strike = float(strike_str)
+            asset = asset.upper()
+            expiration_date = datetime.strptime(date_str, "%d%b%y")
+            time_to_expiry = (expiration_date - datetime.now()).days
+            option_type = "call" if option_kind == "C" else "put"
+            
+            self.initialize_parameters(strike=strike, time_to_expiry=time_to_expiry,
+                                    option_type=option_type, underlying=asset, quantity=quantity, interest_rate=interest_rate)
 
-        return asset, date_str, strike, option_type, time_to_expiry
+            return asset, date_str, strike, option_type, time_to_expiry
+        else:
+            raise ValueError("Invalid option string format.")
 
     # The compute_price method must be implemented by all derived classes
     @abstractmethod
