@@ -1,5 +1,5 @@
 import requests
-from constants import COIN_GECKO_IDS
+from .constants import COIN_GECKO_IDS
 
 def fetch_spot_price(option_underlying, currency='usd', base_url="https://www.deribit.com/api/v2/"):
     coin_id = COIN_GECKO_IDS.get(option_underlying)
